@@ -1,0 +1,390 @@
+GET /_ilm/policy/test-server-logs-policy
+GET /_ilm/policy/test-network-logs-policy
+	
+GET _cat/indices/test-server-logs-000001?v=true&s=index
+GET _cat/shards/test-server-logs-000001?v=true&s=prirep
+
+DELETE test-server-logs-000005
+DELETE /_index_template/test-*
+DELETE /_component_template/test-*
+DELETE /_ilm/policy/test-*
+
+############################################# #############################################
+
+PUT /_ilm/policy/test-server-logs-policy
+{
+    "policy": {
+      "phases" : {
+        "hot" : {
+          "min_age" : "0ms",
+          "actions" : {
+            "rollover" : {
+              "max_primary_shard_size" : "10mb"
+            }
+          }
+        },
+        "warm" : {
+          "min_age" : "30m",
+          "actions" : {
+            "shrink" : {
+              "number_of_shards" : 1
+            }
+          }
+        },
+        "cold" : {
+          "min_age" : "2h",
+          "actions" : { }
+        },
+        "delete" : {
+          "min_age" : "8h",
+          "actions" : {
+            "delete" : {
+              "delete_searchable_snapshot" : true
+            }
+          }
+        }
+      }
+    }
+}
+
+PUT /_component_template/test-server-logs-component-template
+{
+  "template": {
+    "settings": {
+      "number_of_shards": 3,
+      "number_of_replicas": 1,
+      "index.lifecycle.name": "test-server-logs-policy",
+      "index.lifecycle.rollover_alias": "test-server-logs"
+    },
+    "mappings": {
+      "properties": {
+        "created_at": {
+          "type": "date",
+          "format": "EEE dd MMM yyyy HH:mm:ss Z"
+        }
+      }
+    }
+  }
+}
+
+PUT /_index_template/test-server-logs-index-template
+{
+  "index_patterns": [
+    "test-server-logs-*"
+  ],
+  "composed_of": [
+    "test-server-logs-component-template"
+  ]
+}
+
+PUT /test-server-logs-000001
+{
+    "aliases": {
+        "test-server-logs": {
+            "is_write_index": true
+        }
+    }
+}
+
+############################################# #############################################
+
+PUT /_ilm/policy/test-network-logs-policy
+{
+    "policy": {
+      "phases" : {
+        "hot" : {
+          "min_age" : "0ms",
+          "actions" : {
+            "rollover" : {
+              "max_docs" : 8000
+            }
+          }
+        },
+        "warm" : {
+          "min_age" : "30m",
+          "actions" : {
+            "shrink" : {
+              "number_of_shards" : 1
+            }
+          }
+        },
+        "cold" : {
+          "min_age" : "2h",
+          "actions" : { }
+        },
+        "delete" : {
+          "min_age" : "8h",
+          "actions" : {
+            "delete" : {
+              "delete_searchable_snapshot" : true
+            }
+          }
+        }
+      }
+    }
+}
+
+PUT /_component_template/test-network-logs-component-template
+{
+  "template": {
+    "settings": {
+      "number_of_shards": 3,
+      "number_of_replicas": 1,
+      "index.lifecycle.name": "test-network-logs-policy",
+      "index.lifecycle.rollover_alias": "test-network-logs"
+    }
+  }
+}
+
+PUT /_index_template/test-network-logs-index-template
+{
+  "index_patterns": [
+    "test-network-logs-*"
+  ],
+  "composed_of": [
+    "test-network-logs-component-template"
+  ]
+}
+
+PUT /test-network-logs-000001
+{
+    "aliases": {
+        "test-network-logs": {
+            "is_write_index": true
+        }
+    }
+}
+
+############################################# #############################################
+
+$ ssh fabio@mgm-manager01.manager.bk.test.pt
+$ touch looptest_{server,network}.sh && chmod +x looptest_{server,network}.sh 
+$ vi looptest_server.sh
+$ vi looptest_network.sh
+$ bash looptest_server.sh
+$ bash looptest_network.sh
+
+######################################### USE CASE ##########################################
+
+Step-by-Step Conteúdos-Frontend
+
+Space: conteudos
+Background color: #DA8B45
+Index: filebeat-k8s-test-conteudos-lifestyletestpt-prod-fe-000001
+Index component template: filebeat-k8s-test-conteudos-lifestyletestpt-prod-fe-component-template
+Index template: filebeat-k8s-test-conteudos-lifestyletestpt-prod-fe-index-template
+Role: conteudos-frontend
+Alias: filebeat-k8s-test-conteudos-lifestyletestpt-prod-fe
+ILM Policy: filebeat-k8s-test-conteudos-lifestyletestpt-prod-fe-policy
+User: usera & userb
+User full name: User A & User B
+User email: usera@test.pt & userb@test.pt
+
+
+# Spaces
+
+
+* + Create space
+  - Name: conteudos
+  - Background color: #DA8B45
+  - Analytics
+    - Discover
+    - Dashboard
+    - Canvas
+    - Maps
+    - Machine Learning
+    - Visualize Library
+  - Observability
+    - Logs
+    - Metrics
+  - Management
+    - Index Pattern Management
+
+
+# User
+
+PUT _security/user/usera
+{
+  "password" : "${openssl rand -hex 32}",
+  "roles" : ["run_as"],
+  "full_name" : "User A",
+  "email" : "usera@test.pt"
+}
+
+PUT _security/user/userb
+{
+  "password" : "${openssl rand -hex 32}",
+  "roles" : ["run_as"],
+  "full_name" : "User B",
+  "email" : "userb@test.pt"
+}
+
+PUT _security/role/run_as
+{
+  "cluster": [],
+  "indices": [],
+  "run_as": [ 
+    "usera",
+    "userb"
+  ],
+  "metadata" : {
+    "version" : 1
+  }
+}
+
+
+# Role
+
+PUT _security/role/conteudos-frontend
+{
+  "cluster" : [ ],
+  "indices" : [
+    {
+      "names" : [
+        "filebeat-k8s-test-conteudos-lifestyletestpt-prod-fe*"
+      ],
+      "privileges" : [
+        "all"
+      ],
+      "allow_restricted_indices" : false
+    }
+  ],
+  "applications" : [
+    {
+      "application" : "kibana-.kibana",
+      "privileges" : [
+          "feature_discover.all",
+          "feature_dashboard.all",
+          "feature_canvas.all",
+          "feature_maps.all",
+          "feature_ml.all",
+          "feature_visualize.all",
+          "feature_logs.all",
+          "feature_indexPatterns.all",
+          "feature_infrastructure.all"
+      ],
+      "resources" : [
+        "space:conteudos"
+      ]
+    }
+  ],
+  "run_as" : [
+      "usera",
+      "userb"
+  ],
+  "metadata" : {
+    "version" : 1
+  },
+  "transient_metadata" : {
+    "enabled" : true
+    }
+}
+
+PUT _security/user/usera
+{
+  "password" : "${openssl rand -hex 32}",
+  "roles" : ["run_as","conteudos-frontend"],
+  "full_name" : "User A",
+  "email" : "usera@test.pt"
+}
+
+PUT _security/user/userb
+{
+  "password" : "${openssl rand -hex 32}",
+  "roles" : ["run_as","conteudos-frontend"],
+  "full_name" : "User B",
+  "email" : "userb@test.pt"
+}
+
+
+# ILM Policy
+
+PUT _ilm/policy/filebeat-k8s-test-conteudos-lifestyletestpt-prod-fe-policy
+{
+    "policy": {
+      "phases" : {
+        "hot" : {
+          "min_age" : "0ms",
+          "actions" : {
+            "rollover" : {
+              "max_docs" : 40000000
+            }
+          }
+        },
+        "warm" : {
+          "min_age" : "1d",
+          "actions" : {
+            "allocate" : {
+              "number_of_replicas" : 0,
+              "include" : { },
+              "exclude" : { },
+              "require" : { }
+            },
+            "shrink" : {
+              "number_of_shards" : 1
+            }
+          }
+        },
+        "cold" : {
+          "min_age" : "2d",
+          "actions" : { }
+        },
+        "delete" : {
+          "min_age" : "7d",
+          "actions" : {
+            "delete" : {
+              "delete_searchable_snapshot" : true
+            }
+          }
+        }
+      }
+    }
+}
+
+
+# Index
+
+PUT _component_template/filebeat-k8s-test-conteudos-lifestyletestpt-prod-fe-component-template
+{
+  "template": {
+    "settings": {
+      "number_of_shards": 3,
+      "number_of_replicas": 1,
+      "index.lifecycle.name": "filebeat-k8s-test-conteudos-lifestyletestpt-prod-fe-policy",
+      "index.lifecycle.rollover_alias": "filebeat-k8s-test-conteudos-lifestyletestpt-prod-fe"
+    },
+    "mappings": {
+      "properties": {
+        "created_at": {
+          "type": "date",
+          "format": "EEE dd MMM yyyy HH:mm:ss Z"
+        }
+      }
+    }
+  }
+}
+
+PUT _index_template/filebeat-k8s-test-conteudos-lifestyletestpt-prod-fe-index-template
+{
+  "index_patterns": [
+    "filebeat-k8s-test-conteudos-lifestyletestpt-prod-fe*"
+  ],
+  "composed_of": [
+    "filebeat-k8s-test-conteudos-lifestyletestpt-prod-fe-component-template"
+  ]
+}
+
+PUT filebeat-k8s-test-conteudos-lifestyletestpt-prod-fe-000001
+{
+  "aliases": {
+    "filebeat-k8s-test-conteudos-lifestyletestpt-prod-fe": {
+      "is_write_index": true
+    }
+  }
+}
+
+# Index Pattern ^([https://elk.bk.test.pt/app/home Management > Stack Management > Kibana > Index Patterns)]^ =
+
+* + Create index pattern
+  - Name: filebeat-k8s-test-conteudos-lifestyletestpt-prod-fe*
+  - Timestamp field: @timestamp

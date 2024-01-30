@@ -1,0 +1,110 @@
+apiVersion: v1
+data:
+  filebeat.yml: |
+
+    setup:
+        ilm.enabled: false
+        template.enabled: false
+        dashboards.enabled: false
+    filebeat.autodiscover:
+      providers:
+        - type: kubernetes
+          node: ${NODE_NAME}
+          hints.enabled: true
+          hints.default_config:
+            enabled: false
+            type: container
+            paths:
+              - /var/log/containers/*${data.kubernetes.container.id}.log
+          templates:
+            - condition:
+                equals:
+                  kubernetes.namespace: "ingress-nginx"
+              config:
+                - module: nginx
+                  access:
+                    enabled: false
+                  error:
+                    enabled: false
+                  ingress_controller:
+                    enabled: false
+                    input:
+                      type: container
+                      paths:
+                        - /var/log/containers/*${data.kubernetes.container.id}.log
+                      multiline.pattern: '^[[:space:]]+(at)[[:space:]]+\b|^Exiting'
+                      multiline.negate: false
+                      multiline.match: after
+                      exclude_lines: ["^Verdadeiro.*|^Impr.*|^Descon.*|^Falso.*|^Piment.*"]
+    processors:
+      - drop_fields:
+          when:
+            has_fields:
+              ['agent.ephemeral_id']
+          fields:
+            - 'agent.ephemeral_id'
+            - 'agent.hostname'
+            - 'agent.id'
+            - 'agent.name'
+            - 'container.id'
+            - 'container.runtime'
+            - 'ecs.version'
+            - 'host.name'
+            - 'input.type'
+            - 'kubernetes.labels.app_kubernetes_io/instance'
+            - 'kubernetes.labels.app_kubernetes_io/managed-by'
+            - 'kubernetes.labels.app_kubernetes_io/name'
+            - 'kubernetes.labels.app_kubernetes_io/version'
+            - 'kubernetes.labels.docker_app_pt/environment'
+            - 'kubernetes.labels.docker_app_pt/name'
+            - 'kubernetes.labels.helm_sh/chart'
+            - 'kubernetes.labels.pod-template-hash'
+            - 'kubernetes.namespace_labels.cattle_io/creator'
+            - 'kubernetes.namespace_labels.field_cattle_io/projectId'
+            - 'kubernetes.namespace_uid'
+            - 'kubernetes.node.labels.beta_kubernetes_io/arch'
+            - 'kubernetes.node.labels.beta_kubernetes_io/os'
+            - 'kubernetes.node.labels.kubernetes_io/arch'
+            - 'kubernetes.node.labels.kubernetes_io/os'
+            - 'kubernetes.node.labels.kubernetes_io/hostname'
+            - 'kubernetes.node.labels.node-role_kubernetes_io/controlplane'
+            - 'kubernetes.node.labels.node-role_kubernetes_io/etcd'
+            - 'kubernetes.node.labels.node-role_kubernetes_io/worker'
+            - 'kubernetes.node.name'
+            - 'kubernetes.node.uid'
+            - 'kubernetes.pod.uid'
+            - 'kubernetes.replicaset.name'
+            - 'stream'
+          ignore_missing: true
+
+      - decode_json_fields:
+          fields: ["message"]
+          process_array: false
+          max_depth: 2
+          target: ""
+          overwrite_keys: true
+          add_error_key: false
+
+    output.elasticsearch:
+      host: '${NODE_NAME}'
+      hosts: '${ELASTICSEARCH_HOSTS:elasticsearch-master:9200}'
+      username: "${FILEBEAT_USERNAME:filebeat_writer}"
+      password: "${FILEBEAT_PASSWORD:changeme}"
+      indices:
+        - index: "filebeat-k8s-%{[kubernetes.namespace]:unknown}-%{[kubernetes.container.name]:unknown}"
+          when:
+            not.equals.kubernetes.namespace: "ingress-nginx"
+
+        - index: "filebeat-k8s-%{[kubernetes.namespace]}"
+          when:
+            equals.kubernetes.namespace: "ingress-nginx"
+      protocol: "https"
+      ssl.verification_mode: "none"
+kind: ConfigMap
+metadata:
+  creationTimestamp: "2022-11-24T09:33:37Z"
+  name: filebeat-filebeat-daemonset-config
+  namespace: logging
+  resourceVersion: "329064937"
+  selfLink: /api/v1/namespaces/logging/configmaps/filebeat-filebeat-daemonset-config
+  uid: 8d9fb9a1-2c6f-4b78-bf18-63df4212bf6f
